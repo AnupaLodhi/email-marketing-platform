@@ -7,9 +7,13 @@ import Layout from "./components/Layout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Subscribers from "./pages/Subscribers";
+import SubscriberListDetails from "./pages/SubscriberListDetails";
+import SubscriberDetails from "./pages/SubscriberDetails";
 import Lists from "./pages/Lists";
 import Campaigns from "./pages/Campaigns";
+import CampaignDetails from "./pages/CampaignDetails";
 import Analytics from "./pages/Analytics";
+import AnalyticsDetails from "./pages/AnalyticsDetails";
 import Settings from "./pages/Settings";
 import SetupRequired from "./pages/SetupRequired";
 
@@ -86,6 +90,14 @@ function ConfiguredApp() {
           }
         />
         <Route
+        path="/campaigns/:id"
+           element={
+        <ProtectedRoute session={session}>
+            <CampaignDetails />
+               </ProtectedRoute>
+                 }
+             />
+        <Route
           path="/analytics"
           element={
             <ProtectedRoute session={session}>
@@ -93,6 +105,23 @@ function ConfiguredApp() {
             </ProtectedRoute>
           }
         />
+        <Route
+  path="/analytics"
+  element={
+    <ProtectedRoute session={session}>
+      <Analytics />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/analytics/:type"
+  element={
+    <ProtectedRoute session={session}>
+      <AnalyticsDetails />
+    </ProtectedRoute>
+  }
+/>
         <Route
           path="/settings"
           element={

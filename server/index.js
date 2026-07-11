@@ -1,30 +1,34 @@
+const cors = require("cors");
 require("dotenv").config();
 
 const express = require("express");
-const cors = require("cors");
-
 const app = express();
+(async () => {
+  const { data, error } = await supabase
+    .from("campaigns")
+    .select("id")
+    .limit(1);
 
-// Routes
-const subscriberRoutes = require("./subscriber.routes");
+  console.log("SUPABASE TEST:");
+  console.log("data:", data);
+  console.log("error:", error);
+})();
+app.use(cors({
+  origin: "http://localhost:5173",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
 
-// Middleware
-app.use(cors());
 app.use(express.json());
 
-// Route usage
-app.use("/api/subscribers", subscriberRoutes);
+console.log("🔥 SERVER BOOTING...");
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
 
-// Test root route
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Backend is running 🚀",
-  });
-});
+app.use(express.json());
 
-const PORT = 5000;
+// routes
+app.use("/api/campaigns", require("./routes/campaign.routes"));
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(5000, () => {
+  console.log("Server running on http://localhost:5000");
 });

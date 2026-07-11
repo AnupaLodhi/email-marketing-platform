@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router";
 import { supabase, type Subscriber } from "../../lib/supabase";
 import Papa from "papaparse";
 import { toast } from "sonner";
@@ -41,6 +42,7 @@ interface FormState {
 const EMPTY_FORM: FormState = { name: "", email: "", country: "", vertical: "", status: "active" };
 
 export default function Subscribers() {
+  const navigate = useNavigate();
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [total, setTotal] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
@@ -117,32 +119,86 @@ export default function Subscribers() {
 
   const openEdit = (sub: Subscriber) => {
     setEditId(sub.id);
-    setForm({ name: sub.name, email: sub.email, country: sub.country, vertical: sub.vertical, status: sub.status });
-    setShowForm(true);
+setForm({
+  name: sub.name || "",
+  email: sub.email || "",
+  country: sub.country || "",
+  vertical: sub.vertical || "",
+  status: (sub.status || "active") as Status,
+});    setShowForm(true);
   };
 
-  const handleSave = async () => {
-    if (!form.name || !form.email) return toast.error("Name and email are required");
-    setSaving(true);
-    try {
-      if (editId) {
-        const { error } = await supabase.from("subscribers").update(form).eq("id", editId);
+ const handleSave = async () => {
+  if (!form.name || !form.email) return toast.error("Name and email are required");
+  setSaving(true);
+
+  const DEFAULT_LIST_ID = "5ef97515-c8ef-47bc-90e9-9c6a9ddb8f85";
+
+  const cleanForm = {
+    ...form,
+    email: form.email.trim().toLowerCase(),
+    list_id: DEFAULT_LIST_ID,
+  };
+
+  try {
+    let subscriberId = editId;
+
+    if (editId) {
+      const { error } = await supabase
+        .from("subscribers")
+        .update(cleanForm)
+        .eq("id", editId);
+
+      if (error) throw error;
+      toast.success("Subscriber updated");
+    } else {
+      const { data: existing, error: findError } = await supabase
+        .from("subscribers")
+        .select("id")
+        .eq("email", cleanForm.email)
+        .maybeSingle();
+
+      if (findError) throw findError;
+
+      if (existing) {
+        subscriberId = existing.id;
+
+        const { error } = await supabase
+          .from("subscribers")
+          .update({ ...cleanForm, status: "active" })
+          .eq("id", existing.id);
+
         if (error) throw error;
-        toast.success("Subscriber updated");
+        toast.success("Subscriber reactivated");
       } else {
-        const { error } = await supabase.from("subscribers").insert([form]);
+        const { data, error } = await supabase
+          .from("subscribers")
+          .insert([cleanForm])
+          .select("id")
+          .single();
+
         if (error) throw error;
+        subscriberId = data.id;
         toast.success("Subscriber added");
       }
-      setShowForm(false);
-      fetchSubscribers();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setSaving(false);
     }
-  };
 
+    if (subscriberId) {
+      const { error: linkError } = await supabase
+        .from("subscriber_lists")
+        .insert([{ list_id: DEFAULT_LIST_ID, subscriber_id: subscriberId }]);
+
+      if (linkError && linkError.code !== "23505") throw linkError;
+    }
+
+    setShowForm(false);
+    fetchSubscribers();
+  } catch (err: any) {
+    toast.error(err.message || "Something went wrong");
+  } finally {
+    setSaving(false);
+  }
+};
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("subscribers").delete().eq("id", id);
     if (error) return toast.error(error.message);
@@ -269,27 +325,46 @@ export default function Subscribers() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-card rounded-xl border border-border p-4 flex items-center gap-3">
-          <div className="p-2 bg-indigo-50 rounded-lg">
-            <Users className="w-5 h-5 text-indigo-600" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Total</p>
-            <p className="text-xl font-bold text-foreground">{total.toLocaleString()}</p>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4 flex items-center gap-3">
-          <div className="p-2 bg-green-50 rounded-lg">
-            <UserCheck className="w-5 h-5 text-green-600" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Active</p>
-            <p className="text-xl font-bold text-foreground">{activeCount.toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
+      {/* Stat cards */}
+<div className="grid grid-cols-2 gap-4">
+  <button
+    onClick={() => navigate("/subscribers/all")}
+    className="bg-card rounded-xl border border-border p-4 flex items-center gap-3 text-left hover:border-orange-300 hover:shadow-sm transition-all"
+  >
+    <div className="p-2 bg-indigo-50 rounded-lg">
+      <Users className="w-5 h-5 text-indigo-600" />
+    </div>
 
+    <div>
+      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+        Total
+      </p>
+
+      <p className="text-xl font-bold text-foreground">
+        {total.toLocaleString()}
+      </p>
+    </div>
+  </button>
+
+  <button
+    onClick={() => navigate("/subscribers/active")}
+    className="bg-card rounded-xl border border-border p-4 flex items-center gap-3 text-left hover:border-orange-300 hover:shadow-sm transition-all"
+  >
+    <div className="p-2 bg-green-50 rounded-lg">
+      <UserCheck className="w-5 h-5 text-green-600" />
+    </div>
+
+    <div>
+      <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+        Active
+      </p>
+
+      <p className="text-xl font-bold text-foreground">
+        {activeCount.toLocaleString()}
+      </p>
+    </div>
+  </button>
+</div>
       {/* Import progress */}
       {importResult && (
         <div className="bg-card rounded-xl border border-border p-4">
@@ -407,12 +482,18 @@ export default function Subscribers() {
               ) : (
                 subscribers.map((sub) => (
                   <tr key={sub.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-foreground">{sub.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{sub.email}</td>
+<td className="px-4 py-3 font-medium">
+  <button
+    onClick={() => navigate(`/subscribers/${sub.id}`)}
+    className="text-foreground hover:text-orange-500 hover:underline transition-colors text-left"
+  >
+    {sub.name}
+  </button>
+</td>                    <td className="px-4 py-3 text-muted-foreground">{sub.email}</td>
                     <td className="px-4 py-3 text-muted-foreground">{sub.country || "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{sub.vertical || "—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[sub.status] || "bg-gray-100 text-gray-600"}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[(sub.status || "active") as Status] || "bg-gray-100 text-gray-600"}`}>
                         {sub.status}
                       </span>
                     </td>

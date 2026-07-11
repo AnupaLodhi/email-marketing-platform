@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const supabase = require("./supabase");
+const supabase = require("../supabase");
 const validator = require("validator");
 const rateLimit = require("express-rate-limit");
-const { sendWelcomeEmail } = require("./services/email.service");
+const { sendWelcomeEmail } = require("../services/email.service");
 
 // RATE LIMIT
 const limiter = rateLimit({
@@ -25,17 +25,11 @@ router.post("/subscribe", limiter, async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is required",
-      });
+      return res.status(400).json({ success: false, message: "Email required" });
     }
 
     if (!validator.isEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
+      return res.status(400).json({ success: false, message: "Invalid email" });
     }
 
     const { data: existing } = await supabase
@@ -45,36 +39,27 @@ router.post("/subscribe", limiter, async (req, res) => {
       .maybeSingle();
 
     if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: "Email already subscribed",
-      });
+      return res.status(409).json({ success: false, message: "Already subscribed" });
     }
 
     const { data, error } = await supabase
       .from("subscribers")
       .insert([
-        {
-          email,
-          name: email.split("@")[0],
-          status: "active",
-        },
-      ])
+  {
+    email,
+    name: email.split("@")[0],
+    status: "active",
+    list_id: "292b463e-0d40-45c7-96c2-c8c3190cb611"
+  },
+])
       .select();
 
     if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-      });
+      return res.status(400).json({ success: false, message: error.message });
     }
 
-    // SEND EMAIL (safe call)
-    try {
-      await sendWelcomeEmail(email, email.split("@")[0]);
-    } catch (emailErr) {
-      console.log("Email failed:", emailErr.message);
-    }
+    // EMAIL SEND
+    await sendWelcomeEmail(email, email.split("@")[0]);
 
     res.json({
       success: true,
@@ -83,16 +68,12 @@ router.post("/subscribe", limiter, async (req, res) => {
     });
 
   } catch (err) {
-    console.log("SERVER ERROR:", err);
-
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    console.log(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// GET ALL SUBSCRIBERS
+// GET ALL
 router.get("/all", async (req, res) => {
   const { data, error } = await supabase
     .from("subscribers")
@@ -100,10 +81,7 @@ router.get("/all", async (req, res) => {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(400).json({ success: false, message: error.message });
   }
 
   res.json({

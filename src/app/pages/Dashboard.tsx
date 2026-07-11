@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { supabase } from "../../lib/supabase";
 import { Users, List, Mail, Send, TrendingUp, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
@@ -28,6 +29,7 @@ const COLORS = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<Stats>({
     totalSubscribers: 0,
     activeSubscribers: 0,
@@ -87,39 +89,43 @@ export default function Dashboard() {
   };
 
   const statCards = [
-    {
-      label: "Total Subscribers",
-      value: stats.totalSubscribers.toLocaleString(),
-      icon: Users,
-      color: "text-indigo-600",
-      bg: "bg-indigo-50",
-      trend: "+12%",
-    },
-    {
-      label: "Active Subscribers",
-      value: stats.activeSubscribers.toLocaleString(),
-      icon: CheckCircle,
-      color: "text-green-600",
-      bg: "bg-green-50",
-      trend: "+8%",
-    },
-    {
-      label: "Total Lists",
-      value: stats.totalLists.toLocaleString(),
-      icon: List,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-      trend: "+3",
-    },
-    {
-      label: "Total Campaigns",
-      value: stats.totalCampaigns.toLocaleString(),
-      icon: Mail,
-      color: "text-purple-600",
-      bg: "bg-purple-50",
-      trend: "+2",
-    },
-  ];
+  {
+    label: "Total Subscribers",
+    value: stats.totalSubscribers.toLocaleString(),
+    icon: Users,
+    color: "text-indigo-600",
+    bg: "bg-indigo-50",
+    trend: "+12%",
+    route: "/analytics/subscribers",
+  },
+  {
+    label: "Active Subscribers",
+    value: stats.activeSubscribers.toLocaleString(),
+    icon: CheckCircle,
+    color: "text-green-600",
+    bg: "bg-green-50",
+    trend: "+8%",
+    route: "/subscribers",
+  },
+  {
+    label: "Total Lists",
+    value: stats.totalLists.toLocaleString(),
+    icon: List,
+    color: "text-blue-600",
+    bg: "bg-blue-50",
+    trend: "+3",
+    route: "/analytics/lists",
+  },
+  {
+    label: "Total Campaigns",
+    value: stats.totalCampaigns.toLocaleString(),
+    icon: Mail,
+    color: "text-purple-600",
+    bg: "bg-purple-50",
+    trend: "+2",
+    route: "/analytics/campaigns",
+  },
+];
 
   if (loading) {
     return (
@@ -148,8 +154,11 @@ export default function Dashboard() {
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
-            <div key={card.label} className="bg-card rounded-xl border border-border p-5">
-              <div className="flex items-start justify-between">
+<div
+  key={card.label}
+  onClick={() => navigate(card.route)}
+  className="bg-card rounded-xl border border-border p-5 cursor-pointer hover:shadow-md hover:border-orange-300 transition-all"
+>              <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{card.label}</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{card.value}</p>
@@ -242,8 +251,11 @@ export default function Dashboard() {
         ) : (
           <div className="divide-y divide-border">
             {stats.recentCampaigns.map((c) => (
-              <div key={c.id} className="px-5 py-3.5 flex items-center gap-4">
-                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+<div
+  key={c.id}
+  onClick={() => navigate(`/campaigns/${c.id}`)}
+  className="px-5 py-3.5 flex items-center gap-4 cursor-pointer hover:bg-orange-50/50 transition-colors"
+>                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Send className="w-3.5 h-3.5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">

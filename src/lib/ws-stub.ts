@@ -1,3 +1,10 @@
-// Browser stub for Node.js ws/bufferutil/utf-8-validate packages
-export default {};
-export const WebSocket = globalThis.WebSocket;
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_SUPABASE_URL: string;
+  readonly VITE_SUPABASE_ANON_KEY: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

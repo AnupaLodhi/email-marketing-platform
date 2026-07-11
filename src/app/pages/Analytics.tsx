@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { supabase } from "../../lib/supabase";
 import { format, subDays } from "date-fns";
 import {
@@ -56,6 +57,7 @@ const StatCard = ({
 );
 
 export default function Analytics() {
+  const navigate = useNavigate();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -158,15 +160,79 @@ export default function Analytics() {
   }
 
   const topStatCards = [
-    { label: "Total Subscribers", value: data.totalSubscribers.toLocaleString(), icon: Users, color: "bg-indigo-500", bg: "bg-indigo-50", trend: "+12%", trendUp: true },
-    { label: "Total Lists", value: data.totalLists.toLocaleString(), icon: List, color: "bg-blue-500", bg: "bg-blue-50" },
-    { label: "Total Campaigns", value: data.totalCampaigns.toLocaleString(), icon: Mail, color: "bg-purple-500", bg: "bg-purple-50" },
-    { label: "Emails Sent", value: data.emailsSent.toLocaleString(), icon: Send, color: "bg-green-500", bg: "bg-green-50" },
-    { label: "Open Rate", value: `${data.openRate}%`, icon: TrendingUp, color: "bg-cyan-500", bg: "bg-cyan-50", trend: data.openRate > 20 ? "Good" : "Low", trendUp: data.openRate > 20 },
-    { label: "Click Rate", value: `${data.clickRate}%`, icon: MousePointer, color: "bg-amber-500", bg: "bg-amber-50" },
-    { label: "Bounce Rate", value: `${data.bounceRate}%`, icon: AlertTriangle, color: "bg-orange-500", bg: "bg-orange-50", trend: data.bounceRate > 5 ? "High" : "Good", trendUp: data.bounceRate <= 5 },
-    { label: "Unsub Rate", value: `${data.unsubRate}%`, icon: UserMinus, color: "bg-red-500", bg: "bg-red-50", trend: data.unsubRate < 1 ? "Good" : "Monitor", trendUp: data.unsubRate < 1 },
-  ];
+  {
+    label: "Total Subscribers",
+    value: data.totalSubscribers.toLocaleString(),
+    icon: Users,
+    color: "bg-indigo-500",
+    bg: "bg-orange-50",
+    trend: "+12%",
+    trendUp: true,
+    path: "/analytics/subscribers",
+  },
+  {
+    label: "Total Lists",
+    value: data.totalLists.toLocaleString(),
+    icon: List,
+    color: "bg-blue-500",
+    bg: "bg-orange-50",
+    path: "/analytics/lists",
+  },
+  {
+    label: "Total Campaigns",
+    value: data.totalCampaigns.toLocaleString(),
+    icon: Mail,
+    color:  "bg-purple-500",
+    bg: "bg-orange-50",
+    path: "/analytics/campaigns",
+  },
+  {
+    label: "Emails Sent",
+    value: data.emailsSent.toLocaleString(),
+    icon: Send,
+    color:"bg-green-500",
+    bg: "bg-orange-50",
+    path: "/analytics/sent",
+  },
+  {
+    label: "Open Rate",
+    value: `${data.openRate}%`,
+    icon: TrendingUp,
+    color: "bg-cyan-500",
+    bg: "bg-orange-50",
+    trend: data.openRate > 20 ? "Good" : "Low",
+    trendUp: data.openRate > 20,
+    path: "/analytics/opens",
+  },
+  {
+    label: "Click Rate",
+    value: `${data.clickRate}%`,
+    icon: MousePointer,
+    color:"bg-amber-500",
+    bg: "bg-orange-50",
+    path: "/analytics/clicks",
+  },
+  {
+    label: "Bounce Rate",
+    value: `${data.bounceRate}%`,
+    icon: AlertTriangle,
+    color:"bg-orange-500",
+    bg: "bg-orange-50",
+    trend: data.bounceRate > 5 ? "High" : "Good",
+    trendUp: data.bounceRate <= 5,
+    path: "/analytics/bounces",
+  },
+  {
+    label: "Unsub Rate",
+    value: `${data.unsubRate}%`,
+    icon: UserMinus,
+    color: "bg-red-500",
+    bg: "bg-orange-50",
+    trend: data.unsubRate < 1 ? "Good" : "Monitor",
+    trendUp: data.unsubRate < 1,
+    path: "/analytics/unsubscribes",
+  },
+];
 
   return (
     <div className="p-6 space-y-6">
@@ -178,10 +244,16 @@ export default function Analytics() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {topStatCards.map((card) => (
-          <StatCard key={card.label} {...card} />
-        ))}
-      </div>
+  {topStatCards.map((card) => (
+    <div
+      key={card.label}
+      onClick={() => navigate(card.path)}
+      className="cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-md"
+    >
+      <StatCard {...card} />
+    </div>
+  ))}
+</div>
 
       {/* Subscriber growth */}
       <div className="bg-card rounded-xl border border-border p-5">

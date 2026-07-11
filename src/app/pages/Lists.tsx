@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   Plus, Edit2, Trash2, Users, X, Check, Search,
-  ChevronRight, UserPlus, UserMinus, List as ListIcon,
+ChevronRight, UserPlus, UserMinus, List as ListIcon, Upload, Download,
 } from "lucide-react";
 
 interface ListWithCount extends List {
@@ -18,9 +18,12 @@ export default function Lists() {
   const [lists, setLists] = useState<ListWithCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [selectedAddIds, setSelectedAddIds] = useState<string[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // Subscribers panel
@@ -85,30 +88,106 @@ export default function Lists() {
     setPanelTab("members");
     setSubSearch("");
     setAddSearch("");
+    setSelectedMemberIds([]);
+    setSelectedAddIds([]);
     await fetchListSubscribers(list.id);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) return toast.error("Name is required");
-    setSaving(true);
-    try {
-      if (editId) {
-        const { error } = await supabase.from("lists").update(form).eq("id", editId);
-        if (error) throw error;
-        toast.success("List updated");
-      } else {
-        const { error } = await supabase.from("lists").insert([form]);
-        if (error) throw error;
-        toast.success("List created");
-      }
-      setShowForm(false);
-      fetchLists();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setSaving(false);
+  if (!form.name.trim()) return toast.error("Name is required");
+  setSaving(true);
+
+  try {
+    let listId = editId;
+
+    if (editId) {
+      const { error } = await supabase.from("lists").update(form).eq("id", editId);
+      if (error) throw error;
+      toast.success("List updated");
+    } else {
+      const { data, error } = await supabase
+        .from("lists")
+        .insert([form])
+        .select("id")
+        .single();
+
+      if (error) throw error;
+      listId = data.id;
+      toast.success("List created");
     }
-  };
+
+    if (csvFile && listId) {
+      const text = await csvFile.text();
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+
+      const emailIndex = headers.indexOf("email");
+      const nameIndex = headers.indexOf("name");
+      const countryIndex = headers.indexOf("country");
+      const verticalIndex = headers.indexOf("vertical");
+
+      if (emailIndex === -1) throw new Error("CSV must contain email column");
+
+      let imported = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+        const email = values[emailIndex]?.toLowerCase();
+        if (!email) continue;
+
+        const payload = {
+          name: nameIndex >= 0 && values[nameIndex] ? values[nameIndex] : email.split("@")[0],
+          email,
+          country: countryIndex >= 0 ? values[countryIndex] || "" : "",
+          vertical: verticalIndex >= 0 ? values[verticalIndex] || "" : "",
+          status: "active",
+          list_id: listId,
+        };
+
+        const { data: existing } = await supabase
+          .from("subscribers")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+
+        let subscriberId = existing?.id;
+
+        if (subscriberId) {
+          await supabase.from("subscribers").update(payload).eq("id", subscriberId);
+        } else {
+          const { data: inserted, error } = await supabase
+            .from("subscribers")
+            .insert([payload])
+            .select("id")
+            .single();
+
+          if (error) throw error;
+          subscriberId = inserted.id;
+        }
+
+        const { error: linkError } = await supabase
+  .from("subscriber_lists")
+  .upsert(
+    [{ list_id: listId, subscriber_id: subscriberId }],
+    { onConflict: "list_id,subscriber_id" }
+  );
+
+if (linkError) throw linkError;
+        imported++;
+      }
+
+      toast.success(`CSV imported: ${imported} subscribers added to list`);
+    }
+
+    setCsvFile(null);
+    setShowForm(false);
+    fetchLists();
+  } catch (err: any) {
+    toast.error(err.message);
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleDelete = async (id: string) => {
     await supabase.from("subscriber_lists").delete().eq("list_id", id);
@@ -131,18 +210,269 @@ export default function Lists() {
   };
 
   const removeSubscriberFromList = async (subscriberId: string) => {
-    if (!activeList) return;
+  if (!activeList) return;
+
+  const { data, error } = await supabase
+    .from("subscriber_lists")
+    .delete()
+    .eq("list_id", activeList.id)
+    .eq("subscriber_id", subscriberId)
+    .select();
+
+  if (error) return toast.error(error.message);
+
+  if (!data || data.length === 0) {
+    return toast.error("No matching list member found to remove");
+  }
+
+  toast.success("Subscriber removed");
+
+  setListSubscribers((prev) => prev.filter((s) => s.id !== subscriberId));
+  setLists((prev) =>
+    prev.map((list) =>
+      list.id === activeList.id
+        ? { ...list, subscriber_count: Math.max(0, list.subscriber_count - 1) }
+        : list
+    )
+  );
+  setActiveList((prev) =>
+    prev
+      ? { ...prev, subscriber_count: Math.max(0, prev.subscriber_count - 1) }
+      : prev
+  );
+
+  await fetchListSubscribers(activeList.id);
+  fetchLists();
+};
+  const addSelectedSubscribers = async () => {
+  if (!activeList || selectedAddIds.length === 0) {
+    return toast.error("Select at least one subscriber");
+  }
+
+  try {
+    for (const subscriberId of selectedAddIds) {
+      const { error } = await supabase
+        .from("subscriber_lists")
+        .insert([{ list_id: activeList.id, subscriber_id: subscriberId }]);
+
+      if (error && error.code !== "23505") throw error;
+    }
+
+    toast.success(`${selectedAddIds.length} subscribers added`);
+    setSelectedAddIds([]);
+    await fetchListSubscribers(activeList.id);
+    fetchLists();
+  } catch (err: any) {
+    toast.error(err.message || "Failed to add subscribers");
+  }
+};
+
+const removeSelectedMembers = async () => {
+  if (!activeList || selectedMemberIds.length === 0) {
+    return toast.error("Select at least one member");
+  }
+
+  try {
     const { error } = await supabase
       .from("subscriber_lists")
       .delete()
       .eq("list_id", activeList.id)
-      .eq("subscriber_id", subscriberId);
-    if (error) return toast.error(error.message);
-    toast.success("Subscriber removed");
+      .in("subscriber_id", selectedMemberIds);
+
+    if (error) throw error;
+
+    toast.success(`${selectedMemberIds.length} members removed`);
+    setSelectedMemberIds([]);
     await fetchListSubscribers(activeList.id);
     fetchLists();
+  } catch (err: any) {
+    toast.error(err.message || "Failed to remove members");
+  }
+};
+  const importCsvToActiveList = async (
+  e: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = e.target.files?.[0];
+
+  if (!file || !activeList) return;
+
+  try {
+    const text = await file.text();
+
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length < 2) {
+      throw new Error("CSV is empty");
+    }
+
+    const headers = lines[0]
+      .split(",")
+      .map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
+
+    const emailIndex = headers.indexOf("email");
+    const nameIndex = headers.indexOf("name");
+    const countryIndex = headers.indexOf("country");
+    const verticalIndex = headers.indexOf("vertical");
+
+    if (emailIndex === -1) {
+      throw new Error("CSV must contain an email column");
+    }
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i]
+        .split(",")
+        .map((v) => v.trim().replace(/^"|"$/g, ""));
+
+      const email = values[emailIndex]?.trim().toLowerCase();
+
+      if (!email) {
+        skipped++;
+        continue;
+      }
+
+      const payload = {
+        name:
+          nameIndex >= 0 && values[nameIndex]
+            ? values[nameIndex]
+            : email.split("@")[0],
+
+        email,
+
+        country:
+          countryIndex >= 0
+            ? values[countryIndex] || ""
+            : "",
+
+        vertical:
+          verticalIndex >= 0
+            ? values[verticalIndex] || ""
+            : "",
+
+        status: "active",
+      };
+
+      const { data: existing, error: findError } = await supabase
+        .from("subscribers")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (findError) throw findError;
+
+      let subscriberId = existing?.id;
+
+      if (!subscriberId) {
+        const { data: inserted, error: insertError } = await supabase
+          .from("subscribers")
+          .insert([payload])
+          .select("id")
+          .single();
+
+        if (insertError) throw insertError;
+
+        subscriberId = inserted.id;
+      }
+
+      const { error: linkError } = await supabase
+        .from("subscriber_lists")
+        .upsert(
+          [
+            {
+              list_id: activeList.id,
+              subscriber_id: subscriberId,
+            },
+          ],
+          {
+            onConflict: "list_id,subscriber_id",
+          }
+        );
+
+      if (linkError) throw linkError;
+
+      imported++;
+    }
+
+    toast.success(
+      `${imported} subscribers imported into ${activeList.name}${
+        skipped ? `, ${skipped} skipped` : ""
+      }`
+    );
+
+    await fetchListSubscribers(activeList.id);
+    await fetchLists();
+
+    e.target.value = "";
+  } catch (err: any) {
+    toast.error(err.message || "CSV import failed");
+    e.target.value = "";
+  }
+};
+
+
+const exportActiveListCsv = () => {
+  if (!activeList) return;
+
+  if (listSubscribers.length === 0) {
+    return toast.error("This list has no subscribers");
+  }
+
+  const escapeCsv = (value: any) => {
+    const text = String(value ?? "").replace(/"/g, '""');
+    return `"${text}"`;
   };
 
+  const headers = [
+    "name",
+    "email",
+    "country",
+    "vertical",
+    "status",
+    "created_at",
+  ];
+
+  const rows = listSubscribers.map((sub: any) =>
+    [
+      sub.name,
+      sub.email,
+      sub.country,
+      sub.vertical,
+      sub.status,
+      sub.created_at,
+    ]
+      .map(escapeCsv)
+      .join(",")
+  );
+
+  const csv = [headers.join(","), ...rows].join("\n");
+
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+
+  link.download = `${activeList.name
+    .replace(/[^a-z0-9]/gi, "_")
+    .toLowerCase()}_subscribers.csv`;
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+
+  toast.success("List exported successfully");
+};
+  
   const memberIds = new Set(listSubscribers.map((s) => s.id));
 
   const filteredMembers = listSubscribers.filter(
@@ -251,23 +581,49 @@ export default function Lists() {
               </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-border px-6 flex-shrink-0">
-              {(["members", "add"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setPanelTab(tab)}
-                  className={`px-4 py-3 text-sm font-medium capitalize border-b-2 transition-colors ${
-                    panelTab === tab
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {tab === "members" ? "Members" : "Add Subscribers"}
-                </button>
-              ))}
-            </div>
+            {/* Tabs + CSV Actions */}
+<div className="flex items-center justify-between border-b border-border px-6 flex-shrink-0">
 
+  <div className="flex">
+    {(["members", "add"] as const).map((tab) => (
+      <button
+        key={tab}
+        onClick={() => setPanelTab(tab)}
+        className={`px-4 py-3 text-sm font-medium capitalize border-b-2 transition-colors ${
+          panelTab === tab
+            ? "border-primary text-primary"
+            : "border-transparent text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        {tab === "members" ? "Members" : "Add Subscribers"}
+      </button>
+    ))}
+  </div>
+
+  <div className="flex items-center gap-2">
+
+    <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium cursor-pointer hover:bg-muted transition-colors">
+      <Upload className="w-3.5 h-3.5" />
+      Import CSV
+
+      <input
+        type="file"
+        accept=".csv,text/csv"
+        onChange={importCsvToActiveList}
+        className="hidden"
+      />
+    </label>
+
+    <button
+      onClick={exportActiveListCsv}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted transition-colors"
+    >
+      <Download className="w-3.5 h-3.5" />
+      Export CSV
+    </button>
+
+  </div>
+</div>
             {/* Search */}
             <div className="px-6 py-3 border-b border-border flex-shrink-0">
               <div className="relative">
@@ -283,7 +639,61 @@ export default function Lists() {
                 />
               </div>
             </div>
+          {/* Bulk Actions */}
+<div className="px-6 py-3 border-b border-border flex items-center justify-end gap-2">
+  {panelTab === "members" ? (
+    filteredMembers.length > 0 && (
+      <button
+        onClick={async () => {
+          if (!activeList) return;
+          if (!window.confirm(`Remove all members from "${activeList.name}"?`)) return;
 
+          const { error } = await supabase
+            .from("subscriber_lists")
+            .delete()
+            .eq("list_id", activeList.id);
+
+          if (error) return toast.error(error.message);
+
+          toast.success("All members removed");
+          setSelectedMemberIds([]);
+          await fetchListSubscribers(activeList.id);
+          fetchLists();
+        }}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100"
+      >
+        Remove All
+      </button>
+    )
+  ) : (
+    nonMembers.length > 0 && (
+      <button
+        onClick={async () => {
+          if (!activeList) return;
+
+          for (const sub of nonMembers) {
+            const { error } = await supabase
+              .from("subscriber_lists")
+              .upsert([{ list_id: activeList.id, subscriber_id: sub.id }],
+                     { onConflict: "list_id,subscriber_id" }
+                  );
+            if (error && error.code !== "23505") {
+              return toast.error(error.message);
+            }
+          }
+
+          toast.success(`${nonMembers.length} subscribers added`);
+          setSelectedAddIds([]);
+          await fetchListSubscribers(activeList.id);
+          fetchLists();
+        }}
+        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+      >
+        Add All
+      </button>
+    )
+  )}
+</div>
             {/* List */}
             <div className="flex-1 overflow-y-auto">
               {loadingSubs ? (
@@ -339,18 +749,18 @@ export default function Lists() {
           </div>
         </div>
       )}
-
       {/* Create/Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md">
+                    <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border">
               <h3 className="font-semibold text-foreground">{editId ? "Edit List" : "Create List"}</h3>
               <button onClick={() => setShowForm(false)} className="p-1 rounded-md hover:bg-muted text-muted-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6 space-y-4">
+
+            <div className="p-6 space-y-5">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">List Name</label>
                 <input
@@ -361,6 +771,7 @@ export default function Lists() {
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Description</label>
                 <textarea
@@ -371,8 +782,35 @@ export default function Lists() {
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
                 />
               </div>
+
+              {!editId && (
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Import subscribers from CSV</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Optional. Add contacts directly to this list.</p>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center justify-center gap-2 w-full px-4 py-4 text-sm border border-dashed border-border rounded-lg bg-background cursor-pointer hover:bg-muted transition-colors">
+                    <Upload className="w-4 h-4" />
+                    <span className="font-medium">{csvFile ? csvFile.name : "Choose CSV file"}</span>
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Required column: email. Optional: name, country, vertical.
+                  </p>
+                </div>
+              )}
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border bg-muted/10">
               <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted transition-colors">
                 Cancel
               </button>
@@ -385,9 +823,8 @@ export default function Lists() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
+                    </div>
+        )}
       {/* Delete Confirm */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">

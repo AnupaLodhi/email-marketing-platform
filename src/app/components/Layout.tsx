@@ -39,14 +39,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="w-8 h-8 bg-indigo-400 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Zap className="w-4 h-4 text-white" />
-        </div>
+        <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-amber-400 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+  <span className="text-white font-black text-sm">MD</span>
+</div>
         {!collapsed && (
           <div>
-            <p className="text-white font-semibold text-sm leading-tight">Mob Digital</p>
-            <p className="text-indigo-300 text-xs">Email Platform</p>
-          </div>
+            <p className="text-white font-semibold text-sm leading-tight">Mobdigital</p>
+           <p className="text-orange-300 text-xs">Email Platform</p>          </div>
         )}
       </div>
 
@@ -67,9 +66,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             {({ isActive }) => (
               <>
-                <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-indigo-300" : "text-sidebar-foreground group-hover:text-indigo-300"}`} />
-                {!collapsed && <span className="flex-1">{label}</span>}
-                {!collapsed && isActive && <ChevronRight className="w-3 h-3 text-indigo-400" />}
+<Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-orange-300" : "text-sidebar-foreground group-hover:text-orange-300"}`} />                {!collapsed && <span className="flex-1">{label}</span>}
+                {!collapsed && isActive && <ChevronRight className="w-3 h-3 text-orange-300" />}
               </>
             )}
           </NavLink>
