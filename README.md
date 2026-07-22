@@ -1,5 +1,4 @@
-
-  # Email Marketing Platform
+ # Email Marketing Platform
 
 A production-ready email marketing platform built for internal company use.
 
