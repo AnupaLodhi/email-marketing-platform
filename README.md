@@ -25,7 +25,7 @@ It was developed as a real working software tool for company operations and depl
 - Authentication and setup flow
 - Responsive dashboard UI
 - Production deployment with custom domain and SSL
-
+  
 ## Tech Stack
 
 ### Frontend
